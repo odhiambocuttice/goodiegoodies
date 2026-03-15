@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
 import { Instagram } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -243,6 +243,7 @@ const SHAPE_COMPONENTS = [BgKhaligraph, BgBahati, BgNjugush, BgPierra, BgEric] a
 function CelebShowcase() {
   const [activeIndex, setActiveIndex] = useState(0)
   const [progressKey, setProgressKey] = useState(0)
+  const prefersReduced = useReducedMotion()
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -293,14 +294,28 @@ function CelebShowcase() {
         style={{ background: 'radial-gradient(ellipse 120% 120% at 50% 50%, transparent 30%, rgba(0,0,0,0.6) 100%)' }} />
 
       {/* Wordmark + counter */}
-      <div className="relative z-10 px-8 pt-7 flex items-center justify-between">
+      <motion.div
+        className="relative z-10 px-8 pt-7 flex items-center justify-between"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      >
         <span className="text-white/55 text-[11px] font-semibold tracking-[0.22em] uppercase select-none">
           goodiegoodies
         </span>
-        <span className="text-white/25 text-[10px] font-medium tracking-[0.15em] select-none tabular-nums">
-          {String(activeIndex + 1).padStart(2, '0')} / {String(celebItems.length).padStart(2, '0')}
-        </span>
-      </div>
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={activeIndex}
+            className="text-white/25 text-[10px] font-medium tracking-[0.15em] select-none tabular-nums"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            {String(activeIndex + 1).padStart(2, '0')} / {String(celebItems.length).padStart(2, '0')}
+          </motion.span>
+        </AnimatePresence>
+      </motion.div>
 
       {/* Ghost watermark number — colored per slide */}
       <div className="relative z-10 flex-1 flex items-center justify-end pr-4 pointer-events-none select-none overflow-hidden">
@@ -308,10 +323,18 @@ function CelebShowcase() {
           <motion.span key={`num-${activeIndex}`}
             className="font-black leading-none"
             style={{ fontSize: 'clamp(180px, 28vw, 320px)', color: current.primary, opacity: 0 }}
-            initial={{ opacity: 0, x: 60 }}
-            animate={{ opacity: 0.08, x: 0 }}
+            initial={{ opacity: 0, x: 60, y: 0 }}
+            animate={{
+              opacity: 0.08,
+              x: 0,
+              y: prefersReduced ? 0 : [0, -14, 0],
+            }}
             exit={{ opacity: 0, x: -60 }}
-            transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}>
+            transition={{
+              opacity: { duration: 0.65, ease: [0.22, 1, 0.36, 1] },
+              x: { duration: 0.65, ease: [0.22, 1, 0.36, 1] },
+              y: { duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 0.8 },
+            }}>
             {String(activeIndex + 1).padStart(2, '0')}
           </motion.span>
         </AnimatePresence>
@@ -325,7 +348,12 @@ function CelebShowcase() {
 
             {/* Badge — uses slide's secondary color */}
             <motion.div variants={itemVariants} className="inline-flex items-center gap-2 w-fit">
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: current.secondary }} />
+              <motion.span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: current.secondary }}
+                animate={prefersReduced ? {} : { scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+              />
               <span className="text-[10px] font-bold tracking-[0.25em] uppercase" style={{ color: current.secondary }}>
                 Authenticated item
               </span>
@@ -366,18 +394,22 @@ function CelebShowcase() {
           ))}
         </div>
         <div className="flex items-center justify-center gap-2">
-          {celebItems.map((_, i) => (
-            <button key={i} onClick={() => handleDotClick(i)}
+          {celebItems.map((item, i) => (
+            <motion.button key={i} onClick={() => handleDotClick(i)}
               className={cn(
-                'rounded-full transition-all duration-300 border-0 cursor-pointer p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
-                i === activeIndex ? 'opacity-100' : 'opacity-25 hover:opacity-50'
+                'rounded-full border-0 cursor-pointer p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
+                i === activeIndex ? 'opacity-100' : 'opacity-25'
               )}
               style={{
                 width: i === activeIndex ? 22 : 6,
                 height: 6,
                 backgroundColor: i === activeIndex ? current.primary : '#ffffff',
+                transition: 'width 0.3s ease, background-color 0.3s ease, opacity 0.3s ease',
               }}
-              aria-label={`View ${celebItems[i].celeb}`} />
+              whileHover={{ opacity: 1, scale: 1.3 }}
+              whileTap={{ scale: 0.65 }}
+              transition={{ duration: 0.12 }}
+              aria-label={`View ${item.celeb}`} />
           ))}
         </div>
       </div>
@@ -396,7 +428,19 @@ function LoginForm() {
     <motion.div className="flex w-full max-w-[360px] flex-col gap-8"
       variants={formVariants} initial="hidden" animate="show">
 
-      <motion.div variants={formItemVariants} className="flex flex-col gap-2.5">
+      {/* Mobile-only brand header — hidden on desktop where left panel provides brand context */}
+      <motion.div variants={formItemVariants} className="flex flex-col gap-2.5 lg:hidden">
+        <h1 className="font-bold tracking-[-0.04em] leading-none select-none"
+          style={{ fontSize: 'clamp(24px, 6vw, 28px)', color: 'oklch(0.12 0.01 60)' }}>
+          <span style={{ color: 'oklch(0.52 0.22 25)' }}>gg</span>oodiegoodies
+        </h1>
+        <p className="text-sm leading-relaxed" style={{ color: 'oklch(0.48 0.015 60)' }}>
+          Own a piece of the moments that made you a fan.
+        </p>
+      </motion.div>
+
+      {/* Desktop wordmark — hidden on mobile */}
+      <motion.div variants={formItemVariants} className="hidden lg:flex flex-col gap-2.5">
         <h1 className="font-bold tracking-[-0.04em] leading-none select-none"
           style={{ fontSize: 'clamp(22px, 3vw, 26px)', color: 'oklch(0.12 0.01 60)' }}>
           <span style={{ color: 'oklch(0.52 0.22 25)' }}>gg</span>oodiegoodies
@@ -415,7 +459,11 @@ function LoginForm() {
 
       <div className="flex flex-col gap-3">
         <motion.div variants={formItemVariants}>
-          <motion.div whileHover={{ scale: 1.008 }} whileTap={{ scale: 0.995 }} transition={{ duration: 0.15 }}>
+          <motion.div
+            whileHover={{ scale: 1.012, y: -2 }}
+            whileTap={{ scale: 0.96, y: 1 }}
+            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+          >
             <Button variant="outline" size="lg"
               className="w-full gap-3 font-medium cursor-pointer group transition-all duration-200 hover:border-[#E1306C]/40 hover:bg-[#E1306C]/[0.04]"
               onClick={() => handleOAuth('instagram')}>
@@ -426,7 +474,11 @@ function LoginForm() {
         </motion.div>
 
         <motion.div variants={formItemVariants}>
-          <motion.div whileHover={{ scale: 1.008 }} whileTap={{ scale: 0.995 }} transition={{ duration: 0.15 }}>
+          <motion.div
+            whileHover={{ scale: 1.012, y: -2 }}
+            whileTap={{ scale: 0.96, y: 1 }}
+            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+          >
             <Button variant="outline" size="lg"
               className="w-full gap-3 font-medium cursor-pointer group transition-all duration-200 hover:border-[#69C9D0]/40 hover:bg-[#69C9D0]/[0.04]"
               onClick={() => handleOAuth('tiktok')}>
@@ -440,10 +492,12 @@ function LoginForm() {
       <motion.p variants={formItemVariants} className="text-center leading-relaxed"
         style={{ fontSize: 11, color: 'oklch(0.62 0.008 60)' }}>
         By continuing, you agree to our{' '}
-        <a href="#" className="underline underline-offset-2 transition-colors duration-150 hover:text-[oklch(0.12_0.01_60)]"
+        <a href="#"
+          className="underline underline-offset-2 transition-colors duration-150 hover:text-[oklch(0.12_0.01_60)] inline-flex items-center min-h-[44px] lg:min-h-0"
           style={{ color: 'inherit' }}>Terms of Service</a>{' '}
         and{' '}
-        <a href="#" className="underline underline-offset-2 transition-colors duration-150 hover:text-[oklch(0.12_0.01_60)]"
+        <a href="#"
+          className="underline underline-offset-2 transition-colors duration-150 hover:text-[oklch(0.12_0.01_60)] inline-flex items-center min-h-[44px] lg:min-h-0"
           style={{ color: 'inherit' }}>Privacy Policy</a>
       </motion.p>
     </motion.div>
@@ -458,7 +512,7 @@ export default function LoginPage() {
       <div className="hidden lg:block lg:w-[55%] relative">
         <CelebShowcase />
       </div>
-      <div className="flex w-full lg:w-[45%] items-center justify-center p-8"
+      <div className="flex w-full lg:w-[45%] items-center justify-center p-6 sm:p-8"
         style={{ backgroundColor: 'oklch(0.985 0.006 80)' }}>
         <LoginForm />
       </div>
