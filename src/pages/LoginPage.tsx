@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
+import { motion, AnimatePresence, useReducedMotion, type Variants } from 'motion/react'
 import { Instagram } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -48,26 +48,26 @@ const SLIDE_DURATION = 4500
 
 // ─── Motion variants ─────────────────────────────────────────────────────────
 
-const cardVariants = {
+const cardVariants: Variants = {
   hidden: {},
   show: { transition: { staggerChildren: 0.09 } },
   exit: {},
 }
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 28 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as number[] } },
-  exit: { opacity: 0, y: -20, transition: { duration: 0.3, ease: 'easeIn' } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
+  exit: { opacity: 0, y: -20, transition: { duration: 0.3, ease: 'easeIn' as const } },
 }
 
-const formVariants = {
+const formVariants: Variants = {
   hidden: {},
   show: { transition: { staggerChildren: 0.11, delayChildren: 0.1 } },
 }
 
-const formItemVariants = {
+const formItemVariants: Variants = {
   hidden: { opacity: 0, y: 18 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as number[] } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 }
 
 // ─── TikTok Icon ──────────────────────────────────────────────────────────────
@@ -462,7 +462,7 @@ function LoginForm() {
           <motion.div
             whileHover={{ scale: 1.012, y: -2 }}
             whileTap={{ scale: 0.96, y: 1 }}
-            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
           >
             <Button variant="outline" size="lg"
               className="w-full gap-3 font-medium cursor-pointer group transition-all duration-200 hover:border-[#E1306C]/40 hover:bg-[#E1306C]/[0.04]"
@@ -477,7 +477,7 @@ function LoginForm() {
           <motion.div
             whileHover={{ scale: 1.012, y: -2 }}
             whileTap={{ scale: 0.96, y: 1 }}
-            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
           >
             <Button variant="outline" size="lg"
               className="w-full gap-3 font-medium cursor-pointer group transition-all duration-200 hover:border-[#69C9D0]/40 hover:bg-[#69C9D0]/[0.04]"
