@@ -1,7 +1,9 @@
 import * as React from 'react'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { motion, AnimatePresence, useReducedMotion, type Variants } from 'motion/react'
+import Cropper from 'react-easy-crop'
+import type { Area } from 'react-easy-crop'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -444,6 +446,103 @@ const PHOTO_SLOTS = [
   { id: 'choice', label: 'Your Choice', hint: 'Any extra angle' },
 ]
 
+// ─── Crop helpers ─────────────────────────────────────────────────────────────
+
+async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<File> {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image()
+    img.addEventListener('load', () => resolve(img))
+    img.addEventListener('error', reject)
+    img.src = imageSrc
+  })
+  const canvas = document.createElement('canvas')
+  canvas.width = pixelCrop.width
+  canvas.height = pixelCrop.height
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height)
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (!blob) { reject(new Error('Canvas is empty')); return }
+      resolve(new File([blob], 'cropped.jpg', { type: 'image/jpeg' }))
+    }, 'image/jpeg', 0.92)
+  })
+}
+
+// ─── CropModal ────────────────────────────────────────────────────────────────
+
+function CropModal({ src, onConfirm, onCancel }: { src: string; onConfirm: (file: File) => void; onCancel: () => void }) {
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
+
+  const onCropComplete = useCallback((_: Area, pixels: Area) => {
+    setCroppedAreaPixels(pixels)
+  }, [])
+
+  const handleConfirm = async () => {
+    if (!croppedAreaPixels) return
+    const file = await getCroppedImg(src, croppedAreaPixels)
+    onConfirm(file)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onCancel}>
+      <div className="bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col" style={{ width: 480, maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Crop photo</p>
+            <p className="text-xs text-slate-400 mt-0.5">Drag to reposition · Scroll to zoom</p>
+          </div>
+          <button type="button" onClick={onCancel} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          </button>
+        </div>
+
+        {/* Crop area */}
+        <div className="relative bg-black" style={{ height: 360 }}>
+          <Cropper
+            image={src}
+            crop={crop}
+            zoom={zoom}
+            aspect={3 / 4}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onCropComplete={onCropComplete}
+          />
+        </div>
+
+        {/* Zoom slider */}
+        <div className="px-6 py-4 flex items-center gap-3 border-t border-slate-100">
+          <span className="text-xs text-slate-400">–</span>
+          <input
+            type="range"
+            min={1}
+            max={3}
+            step={0.05}
+            value={zoom}
+            onChange={e => setZoom(Number(e.target.value))}
+            className="flex-1 accent-slate-900"
+          />
+          <span className="text-xs text-slate-400">+</span>
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 pb-5 flex gap-3">
+          <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={handleConfirm} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 transition-colors">
+            Use photo
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── PhotoSlot types ──────────────────────────────────────────────────────────
+
 interface PhotoSlotProps {
   slot: typeof PHOTO_SLOTS[number]
   photo: File | null
@@ -454,6 +553,7 @@ interface PhotoSlotProps {
 function PhotoSlot({ slot, photo, onAdd, onRemove }: PhotoSlotProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
 
   useEffect(() => {
     if (!photo) { setPreview(null); return }
@@ -462,14 +562,34 @@ function PhotoSlot({ slot, photo, onAdd, onRemove }: PhotoSlotProps) {
     return () => URL.revokeObjectURL(url)
   }, [photo])
 
+  const openCrop = (file: File) => {
+    const url = URL.createObjectURL(file)
+    setCropSrc(url)
+  }
+
+  const handleCropConfirm = (croppedFile: File) => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
+    onAdd(croppedFile)
+  }
+
+  const handleCropCancel = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
+  }
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.webp'] },
     maxFiles: 1,
     noClick: true,
-    onDrop: (files) => { if (files[0]) onAdd(files[0]) },
+    onDrop: (files) => { if (files[0]) openCrop(files[0]) },
   })
 
   return (
+    <>
+    {cropSrc && (
+      <CropModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={handleCropCancel} />
+    )}
     <div {...getRootProps()} onClick={() => inputRef.current?.click()} className="aspect-square">
       <motion.div
         whileTap={{ scale: 0.97 }}
@@ -492,7 +612,7 @@ function PhotoSlot({ slot, photo, onAdd, onRemove }: PhotoSlotProps) {
           className="sr-only"
           onChange={(e) => {
             const file = e.target.files?.[0]
-            if (file) onAdd(file)
+            if (file) openCrop(file)
             e.target.value = ''
           }}
         />
@@ -517,6 +637,7 @@ function PhotoSlot({ slot, photo, onAdd, onRemove }: PhotoSlotProps) {
         )}
       </motion.div>
     </div>
+    </>
   )
 }
 
@@ -810,22 +931,18 @@ interface FullscreenModalProps {
   onClose: () => void
 }
 
-function FullscreenModal({ photoUrls, activeIndex, onChangeIndex, draft, onClose }: FullscreenModalProps) {
+function FullscreenModal({ photoUrls, draft, onClose }: FullscreenModalProps) {
   const detectPlatformFromUrl = (url: string) => {
     if (url.includes('instagram.com')) return 'Instagram'
     if (url.includes('tiktok.com')) return 'TikTok'
     return null
   }
 
-  // Close on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
-
-  const hasPrev = activeIndex > 0
-  const hasNext = activeIndex < photoUrls.length - 1
 
   return (
     <AnimatePresence>
@@ -833,187 +950,139 @@ function FullscreenModal({ photoUrls, activeIndex, onChangeIndex, draft, onClose
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="fixed inset-0 z-50 flex items-center justify-center"
-        style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}
-        onClick={onClose}
+        transition={{ duration: 0.22 }}
+        className="fixed inset-0 z-50 bg-white flex overflow-hidden"
       >
-        {/* Modal panel */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 12 }}
-          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-          onClick={(e) => e.stopPropagation()}
-          className="relative bg-white rounded-3xl overflow-hidden shadow-2xl flex"
-          style={{ width: 'min(92vw, 1100px)', height: 'min(88vh, 700px)' }}
+        {/* ── Left: vertically stacked photos (scrollable) ── */}
+        <div className="flex-[55] overflow-y-auto bg-[#f0ede9]">
+          {photoUrls.length > 0 ? (
+            <div className="grid grid-cols-2 gap-[4px]">
+              {photoUrls.map((url, i) => (
+                <div key={i} className="w-full aspect-[3/4] overflow-hidden">
+                  <img
+                    src={url}
+                    alt={`Photo ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-400">
+              <span className="text-5xl">📷</span>
+              <span className="text-sm">No photos added yet</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── Right: sticky product info ── */}
+        <div
+          className="flex-[45] sticky top-0 h-screen overflow-y-auto border-l border-slate-100 flex flex-col"
+          style={{ fontFamily: "'DM Sans', sans-serif" }}
         >
           {/* Close button */}
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-black/10 hover:bg-black/20 flex items-center justify-center transition-colors text-slate-700"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-          </button>
-
-          {/* Left: photo viewer */}
-          <div className="flex-1 bg-slate-100 relative flex items-center justify-center overflow-hidden">
-            {photoUrls.length > 0 ? (
-              <AnimatePresence mode="wait">
-                <motion.img
-                  key={activeIndex}
-                  src={photoUrls[activeIndex]}
-                  alt="Product"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                  className="w-full h-full object-contain"
-                />
-              </AnimatePresence>
-            ) : (
-              <div className="flex flex-col items-center gap-3 text-slate-400">
-                <span className="text-5xl">📷</span>
-                <span className="text-sm">No photos yet</span>
-              </div>
-            )}
-
-            {/* Prev/Next */}
-            {hasPrev && (
-              <button
-                type="button"
-                onClick={() => onChangeIndex(activeIndex - 1)}
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 shadow-md flex items-center justify-center hover:bg-white transition-colors"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M10 12L6 8l4-4" stroke="#334155" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            )}
-            {hasNext && (
-              <button
-                type="button"
-                onClick={() => onChangeIndex(activeIndex + 1)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 shadow-md flex items-center justify-center hover:bg-white transition-colors"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M6 4l4 4-4 4" stroke="#334155" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            )}
-
-            {/* Thumbnail strip */}
-            {photoUrls.length > 1 && (
-              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 px-4">
-                {photoUrls.map((url, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => onChangeIndex(i)}
-                    className={cn(
-                      'w-12 h-12 rounded-xl overflow-hidden border-2 transition-all shrink-0',
-                      i === activeIndex ? 'border-white shadow-lg scale-105' : 'border-white/40 opacity-60 hover:opacity-90'
-                    )}
-                  >
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Counter */}
-            {photoUrls.length > 0 && (
-              <div className="absolute top-4 left-4 rounded-full bg-black/40 text-white text-xs px-2.5 py-1 font-medium">
-                {activeIndex + 1} / {photoUrls.length}
-              </div>
-            )}
+          <div className="flex justify-end px-10 pt-8 pb-0 shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 rounded-full border border-slate-200 hover:bg-slate-100 flex items-center justify-center transition-colors text-slate-500"
+            >
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+            </button>
           </div>
 
-          {/* Right: product info — Kit & Ace typography */}
-          <div className="w-[340px] shrink-0 flex flex-col overflow-y-auto border-l border-slate-100"
-            style={{ fontFamily: "'DM Sans', sans-serif" }}>
-            <div className="p-8 flex flex-col">
+          <div className="px-10 py-8 flex flex-col gap-0 flex-1">
+            {/* Brand / category */}
+            <p style={{ fontSize: '11px', fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '14px' }}>
+              GoodieGoodies{draft.category ? ` · ${CATEGORY_LABELS[draft.category] || draft.category}` : ''}
+            </p>
 
-              {/* Category label */}
-              {draft.category && (
-                <p style={{ fontSize: '10px', fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: '#94a3b8', marginBottom: '10px' }}>
-                  goodiegoodies · {CATEGORY_LABELS[draft.category] || draft.category}
-                </p>
-              )}
+            {/* Title */}
+            <h2 style={{ fontSize: '28px', fontWeight: 600, letterSpacing: '-0.025em', lineHeight: 1.15, color: '#0f0f0f', marginBottom: '20px' }}>
+              {draft.itemName || <span style={{ color: '#94a3b8', fontStyle: 'italic', fontWeight: 400 }}>Untitled listing</span>}
+            </h2>
 
-              {/* Item name */}
-              <h2 style={{ fontSize: '24px', fontWeight: 600, letterSpacing: '-0.025em', lineHeight: 1.15, color: '#0f0f0f', marginBottom: '16px' }}>
-                {draft.itemName || <span style={{ color: '#94a3b8', fontStyle: 'italic', fontWeight: 400 }}>Untitled listing</span>}
-              </h2>
-
-              {/* Price */}
-              <div style={{ borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', padding: '14px 0', marginBottom: '20px' }}>
-                {draft.price >= 500 ? (
-                  <div className="flex items-baseline gap-2">
-                    <span style={{ fontSize: '26px', fontWeight: 500, letterSpacing: '-0.02em', color: '#0f0f0f' }}>
-                      KES {draft.price.toLocaleString('en-KE')}
-                    </span>
-                    <span style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#94a3b8' }}>
-                      {PLATFORM_LABELS[draft.pricingMode]}
-                    </span>
-                  </div>
-                ) : (
-                  <span style={{ fontSize: '14px', color: '#94a3b8', fontStyle: 'italic' }}>Price not set</span>
-                )}
-              </div>
-
-              {/* Meta rows */}
-              <div className="flex flex-col gap-3 mb-6">
-                {draft.condition && (
-                  <div className="flex items-center gap-2">
-                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#334155', minWidth: '72px' }}>Condition</span>
-                    <span style={{ fontSize: '12px', color: '#475569' }}>{CONDITION_LABELS[draft.condition] || draft.condition}</span>
-                  </div>
-                )}
-                {draft.wornAt && (
-                  <div className="flex items-center gap-2">
-                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#334155', minWidth: '72px' }}>Worn at</span>
-                    <span style={{ fontSize: '12px', color: '#ea580c' }}>
-                      {draft.wornAt}{draft.wornAtDate ? `, ${new Date(draft.wornAtDate + 'T00:00:00').getFullYear()}` : ''}
-                    </span>
-                  </div>
-                )}
-                {draft.memoryLink && detectPlatformFromUrl(draft.memoryLink) && (
-                  <div className="flex items-center gap-2">
-                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#334155', minWidth: '72px' }}>Verified</span>
-                    <span style={{ fontSize: '12px', color: '#be185d' }}>📸 {detectPlatformFromUrl(draft.memoryLink)}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Story */}
-              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '20px', marginBottom: '20px' }}>
-                <p style={{ fontSize: '10px', fontWeight: 500, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#94a3b8', marginBottom: '10px' }}>
-                  The Story
-                </p>
-                {draft.story ? (
-                  <p style={{ fontSize: '13px', color: '#475569', lineHeight: 1.65 }}>{draft.story}</p>
-                ) : (
-                  <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>Story not written yet</p>
-                )}
-              </div>
-
-              {/* Auth note */}
-              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '20px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'oklch(0.52 0.22 25 / 0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'oklch(0.52 0.22 25)', fontSize: '13px' }}>✓</div>
-                <div>
-                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#1e293b', marginBottom: '3px' }}>Authenticated Item</p>
-                  <p style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
-                    Reviewed by the goodiegoodies team before going live.
-                  </p>
+            {/* Price */}
+            <div style={{ marginBottom: '28px' }}>
+              {draft.price >= 500 ? (
+                <div className="flex items-baseline gap-3">
+                  <span style={{ fontSize: '30px', fontWeight: 500, letterSpacing: '-0.02em', color: '#0f0f0f' }}>
+                    KES {draft.price.toLocaleString('en-KE')}
+                  </span>
+                  <span style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#94a3b8' }}>
+                    {PLATFORM_LABELS[draft.pricingMode]}
+                  </span>
                 </div>
+              ) : (
+                <span style={{ fontSize: '14px', color: '#94a3b8', fontStyle: 'italic' }}>Price not set</span>
+              )}
+            </div>
+
+            <div style={{ height: '1px', background: '#e2e8f0', marginBottom: '24px' }} />
+
+            {/* Meta rows */}
+            <div className="flex flex-col gap-5" style={{ marginBottom: '28px' }}>
+              {draft.condition && (
+                <div className="flex gap-8">
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#334155', minWidth: '80px' }}>Condition</span>
+                  <span style={{ fontSize: '13px', color: '#475569' }}>{CONDITION_LABELS[draft.condition] || draft.condition}</span>
+                </div>
+              )}
+              {draft.wornAt && (
+                <div className="flex gap-8">
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#334155', minWidth: '80px' }}>Worn at</span>
+                  <span style={{ fontSize: '13px', color: '#ea580c' }}>
+                    {draft.wornAt}{draft.wornAtDate ? `, ${new Date(draft.wornAtDate + 'T00:00:00').getFullYear()}` : ''}
+                  </span>
+                </div>
+              )}
+              {draft.memoryLink && detectPlatformFromUrl(draft.memoryLink) && (
+                <div className="flex gap-8">
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#334155', minWidth: '80px' }}>Verified</span>
+                  <span style={{ fontSize: '13px', color: '#be185d' }}>📸 {detectPlatformFromUrl(draft.memoryLink)}</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ height: '1px', background: '#e2e8f0', marginBottom: '28px' }} />
+
+            {/* The Story */}
+            <div style={{ marginBottom: '32px' }}>
+              <p style={{ fontSize: '10px', fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '12px' }}>
+                The Story
+              </p>
+              {draft.story ? (
+                <p style={{ fontSize: '14px', color: '#475569', lineHeight: 1.7 }}>{draft.story}</p>
+              ) : (
+                <p style={{ fontSize: '14px', color: '#94a3b8', fontStyle: 'italic' }}>Story not written yet</p>
+              )}
+            </div>
+
+            <div style={{ height: '1px', background: '#e2e8f0', marginBottom: '28px' }} />
+
+            {/* Auth badge */}
+            <div className="flex items-start gap-4" style={{ marginBottom: '40px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'oklch(0.52 0.22 25 / 0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'oklch(0.52 0.22 25)', fontSize: '14px' }}>✓</div>
+              <div>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>Authenticated Item</p>
+                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.55 }}>
+                  Reviewed by the goodiegoodies team before going live.
+                </p>
               </div>
             </div>
+
+            {/* CTA */}
+            <button
+              type="button"
+              className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm tracking-wide transition-colors"
+              style={{ borderRadius: '4px' }}
+            >
+              {draft.pricingMode === 'auction' ? 'Place a bid' : 'Buy now'}
+            </button>
           </div>
-        </motion.div>
+        </div>
       </motion.div>
     </AnimatePresence>
   )
@@ -1073,9 +1142,9 @@ function LivePreview({ draft }: LivePreviewProps) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
-          {/* Photo grid — M&S style */}
-          <div className="grid grid-cols-2 gap-0.5 bg-slate-200 rounded-2xl overflow-hidden">
+        <div className="flex-1 overflow-y-auto flex flex-col">
+          {/* Photo grid — Kit & Ace style: 2 equal portrait columns, 4px gap */}
+          <div className="grid grid-cols-2 gap-[4px] bg-[#e8e5e1]">
             {gridSlots.map((slotIndex) => {
               const url = photoUrls[slotIndex]
               return (
@@ -1083,10 +1152,7 @@ function LivePreview({ draft }: LivePreviewProps) {
                   key={slotIndex}
                   type="button"
                   onClick={() => { setActivePhoto(slotIndex); setFullscreen(true) }}
-                  className={cn(
-                    'relative overflow-hidden bg-slate-100 aspect-square group',
-                    slotIndex === 0 && 'col-span-2 aspect-[2/1]',
-                  )}
+                  className="relative overflow-hidden bg-[#f0ede9] aspect-[3/4] group"
                   disabled={!url}
                 >
                   {url ? (
@@ -1094,10 +1160,9 @@ function LivePreview({ draft }: LivePreviewProps) {
                       <img
                         src={url}
                         alt={`Photo ${slotIndex + 1}`}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
                       />
-                      {/* Hover overlay */}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors duration-200 flex items-center justify-center">
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full px-3 py-1.5 text-xs font-medium text-slate-700 flex items-center gap-1.5">
                           <svg width="11" height="11" viewBox="0 0 13 13" fill="none">
                             <path d="M8 1h4v4M5 12H1V8M12 1L7.5 5.5M1 12l4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1107,12 +1172,11 @@ function LivePreview({ draft }: LivePreviewProps) {
                       </div>
                     </>
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-slate-400">
-                      <span className={slotIndex === 0 ? 'text-3xl' : 'text-xl'}>📷</span>
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-400">
+                      <span className="text-2xl">📷</span>
                       {slotIndex === 0 && <span className="text-xs">Add photos to preview</span>}
                     </div>
                   )}
-                  {/* Photo count badge on first slot */}
                   {slotIndex === 0 && draft.photos.length > 4 && (
                     <div className="absolute bottom-2 right-2 rounded-full bg-black/60 text-white text-xs px-2 py-0.5 font-medium">
                       +{draft.photos.length - 4} more
@@ -1123,8 +1187,11 @@ function LivePreview({ draft }: LivePreviewProps) {
             })}
           </div>
 
+          {/* Product info */}
+          <div className="p-5 flex flex-col gap-4">
+
           {/* Product info — Kit & Ace style */}
-          <div className="flex flex-col bg-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+          <div style={{ fontFamily: "'DM Sans', sans-serif" }}>
 
             {/* Category label */}
             {draft.category && (
@@ -1249,6 +1316,7 @@ function LivePreview({ draft }: LivePreviewProps) {
           </div>
         </div>
       </div>
+    </div>
 
       {/* Fullscreen modal */}
       {fullscreen && (
