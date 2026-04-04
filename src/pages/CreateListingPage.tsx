@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -1336,6 +1337,7 @@ function LivePreview({ draft }: LivePreviewProps) {
 
 export default function CreateListingPage() {
   useReducedMotion() // honour preference inside child components
+  const navigate = useNavigate()
 
   const [draft, setDraft] = useState<ListingDraft>(() => {
     try {
@@ -1351,6 +1353,16 @@ export default function CreateListingPage() {
 
   const [openSection, setOpenSection] = useState<number>(0)
   const [submitted, setSubmitted] = useState(false)
+  const [submittedListing, setSubmittedListing] = useState<{
+    itemName: string
+    category: string
+    price: number
+    pricingMode: string
+    condition: string
+    wornAt: string
+    photoUrl: string | null
+    storyExcerpt: string
+  } | null>(null)
 
   const completionMap = SECTIONS.map((_, i) => isSectionComplete(i, draft))
   const requiredCompleted = SECTIONS.filter((s, i) => !s.optional && completionMap[i]).length
@@ -1358,6 +1370,18 @@ export default function CreateListingPage() {
   const allDone           = requiredCompleted >= requiredTotal
 
   const handleSubmit = () => {
+    // Capture snapshot for success screen before clearing
+    const photoUrl = draft.photos.length > 0 ? URL.createObjectURL(draft.photos[0]) : null
+    setSubmittedListing({
+      itemName: draft.itemName,
+      category: draft.category,
+      price: draft.price,
+      pricingMode: draft.pricingMode,
+      condition: draft.condition,
+      wornAt: draft.wornAt,
+      photoUrl,
+      storyExcerpt: draft.story.split(/\s+/).slice(0, 20).join(' '),
+    })
     localStorage.removeItem(DRAFT_KEY)
     setSubmitted(true)
   }
@@ -1367,32 +1391,169 @@ export default function CreateListingPage() {
   }
 
   if (submitted) {
+    const listing = submittedListing
+    const shareText = listing
+      ? `${listing.itemName} — dropping on Goodiegoodies. Kenya's marketplace for real celebrity items.`
+      : "Check out my listing dropping on Goodiegoodies — Kenya's marketplace for real celebrity items."
+
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-4 py-12">
+      <div className="min-h-screen bg-[#faf9f7] flex flex-col items-center justify-start px-4 py-12 sm:py-20" style={{ fontFamily: "'DM Sans', sans-serif" }}>
         <motion.div
-          className="w-full max-w-[480px] flex flex-col items-center gap-6 text-center"
-          initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+          className="w-full max-w-[440px] flex flex-col items-center gap-10"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
         >
-          <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-3xl">🎉</div>
-          <div className="flex flex-col gap-2">
-            <h1 className="text-2xl font-bold">You're in the queue!</h1>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              We'll review your listing within 2–4 hours. You'll get a WhatsApp message when it's live.
-            </p>
-          </div>
-          <a
-            href={`https://wa.me/?text=${encodeURIComponent("Check out my listing dropping on Goodiegoodies — Kenya's marketplace for real celebrity items. 🔥")}`}
-            target="_blank" rel="noopener noreferrer" className="w-full"
+          {/* Status pill */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+            className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2"
           >
-            <motion.div whileHover={{ scale: 1.012, y: -2 }} whileTap={{ scale: 0.96 }}
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span style={{ fontSize: '12px', fontWeight: 500, color: '#047857', letterSpacing: '0.02em' }}>Submitted for review</span>
+          </motion.div>
+
+          {/* Heading */}
+          <motion.div
+            className="text-center flex flex-col gap-3"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+          >
+            <h1 style={{ fontSize: '28px', fontWeight: 600, letterSpacing: '-0.03em', lineHeight: 1.15, color: '#0f0f0f' }}>
+              You're in the queue
+            </h1>
+            <p style={{ fontSize: '14px', color: '#64748b', lineHeight: 1.65 }}>
+              We'll review your listing within 2–4 hours.<br />You'll get a WhatsApp message when it's live.
+            </p>
+          </motion.div>
+
+          {/* Share card — editorial look with photo background */}
+          {listing && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.6, delay: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+              className="w-full"
+            >
+              <div
+                className="relative w-full overflow-hidden"
+                style={{ aspectRatio: '4 / 5', borderRadius: '6px' }}
+              >
+                {/* Photo background or gradient fallback */}
+                {listing.photoUrl ? (
+                  <img
+                    src={listing.photoUrl}
+                    alt={listing.itemName}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="absolute inset-0" style={{ background: 'linear-gradient(145deg, #1a1a1a 0%, #2d2926 100%)' }} />
+                )}
+
+                {/* Dark gradient overlay from bottom */}
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 40%, rgba(0,0,0,0.08) 100%)' }} />
+
+                {/* Top badge */}
+                <div className="absolute top-0 left-0 right-0 p-5 flex items-start justify-between">
+                  <span style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.7)' }}>
+                    <span style={{ color: 'oklch(0.72 0.18 25)' }}>gg</span>oodiegoodies
+                  </span>
+                  {listing.category && (
+                    <span style={{ fontSize: '10px', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '100px', padding: '3px 10px' }}>
+                      {CATEGORY_LABELS[listing.category] || listing.category}
+                    </span>
+                  )}
+                </div>
+
+                {/* Bottom content */}
+                <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col gap-3">
+                  <p style={{ fontSize: '10px', fontWeight: 500, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'oklch(0.72 0.18 25)' }}>
+                    Dropping soon
+                  </p>
+                  <h3 style={{ fontSize: '22px', fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1.2, color: '#fff' }}>
+                    {listing.itemName}
+                  </h3>
+                  {listing.price >= 500 && (
+                    <div className="flex items-baseline gap-2.5">
+                      <span style={{ fontSize: '18px', fontWeight: 500, letterSpacing: '-0.01em', color: '#fff' }}>
+                        KES {listing.price.toLocaleString('en-KE')}
+                      </span>
+                      <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>
+                        {PLATFORM_LABELS[listing.pricingMode]}
+                      </span>
+                    </div>
+                  )}
+                  {listing.wornAt && (
+                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>
+                      Worn at {listing.wornAt}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Checklist summary */}
+          <motion.div
+            className="w-full flex flex-col gap-3"
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+          >
+            {[
+              { label: 'Story written', done: true },
+              { label: 'Photos uploaded', done: true },
+              { label: 'Details & price set', done: true },
+              { label: 'Sent for editorial review', done: true },
+            ].map((item, i) => (
+              <motion.div
+                key={item.label}
+                className="flex items-center gap-3"
+                initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: 0.55 + i * 0.08, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+              >
+                <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 6.5L4.5 9L10 3" stroke="#047857" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <span style={{ fontSize: '13px', color: '#334155', fontWeight: 450 }}>{item.label}</span>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {/* Actions */}
+          <motion.div
+            className="w-full flex flex-col gap-3"
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.7, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+          >
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
+              target="_blank" rel="noopener noreferrer" className="w-full block"
+            >
+              <motion.div whileHover={{ scale: 1.012, y: -2 }} whileTap={{ scale: 0.96, y: 1 }}
+                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}>
+                <Button size="lg" className="w-full gap-2" style={{ borderRadius: '4px', background: '#0f0f0f' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  Share on WhatsApp
+                </Button>
+              </motion.div>
+            </a>
+            <motion.div whileHover={{ scale: 1.012, y: -2 }} whileTap={{ scale: 0.96, y: 1 }}
               transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}>
-              <Button size="lg" className="w-full gap-2 rounded-full">
-                <span>📲</span> Share to WhatsApp
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full gap-2"
+                style={{ borderRadius: '4px' }}
+                onClick={() => navigate({ to: '/dashboard' })}
+              >
+                Go to Dashboard
               </Button>
             </motion.div>
-          </a>
-          <p className="text-xs text-muted-foreground">We'll notify you via WhatsApp once review is complete.</p>
+            <p className="text-center" style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
+              We'll notify you via WhatsApp once your listing is live.
+            </p>
+          </motion.div>
         </motion.div>
       </div>
     )
