@@ -493,7 +493,7 @@ function CropModal({ src, onConfirm, onCancel }: { src: string; onConfirm: (file
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-900">Crop photo</p>
-            <p className="text-xs text-slate-400 mt-0.5">Drag to reposition · Scroll to zoom</p>
+            <p className="text-xs text-slate-400 mt-0.5">3:4 ratio · Drag to reposition · Scroll to zoom</p>
           </div>
           <button type="button" onClick={onCancel} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -660,9 +660,14 @@ function StepPhotos({ draft, setDraft }: StepProps) {
 
   return (
     <div className="flex flex-col gap-8">
-      <p className="text-muted-foreground text-sm leading-relaxed">
-        5 slots — front, back, a close-up detail, you with it, and one of your choice.
-      </p>
+      <div className="flex flex-col gap-1">
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          5 slots — front, back, a close-up detail, you with it, and one of your choice.
+        </p>
+        <p className="text-[11px] font-medium" style={{ color: 'oklch(0.52 0.22 25)' }}>
+          Photos are cropped to 3:4 — this keeps all listings consistent on the marketplace.
+        </p>
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         {PHOTO_SLOTS.slice(0, 4).map((slot) => (
